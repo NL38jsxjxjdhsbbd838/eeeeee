@@ -6,10 +6,11 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "puppeteer": "^22.0.0",
+    "puppeteer": "^24.15.0",
     "dotenv": "^16.0.0",
     "fs-extra": "^11.1.1"
   }
 }
+
 
 
