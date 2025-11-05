@@ -80,20 +80,29 @@ async function main() {
         const profileUrl = 'https://funpay.com/users/2694790/';
         const lotLinks = await getAllLotLinks(profileUrl, page);
 
-        // Проходим по каждому лоту и поднимаем предложения
+        // Первый проход: поднимаем предложения на всех лотах
         for (const link of lotLinks) {
             await raiseOffer(page, link);
         }
 
         console.log('🎉 Все лоты обработаны!');
+
+        // Далее повторяем каждые INTERVAL_MIN минут
+        setInterval(async () => {
+            console.log('🔄 Повторный проход по лотам...');
+            for (const link of lotLinks) {
+                await raiseOffer(page, link);
+            }
+        }, INTERVAL_MIN * 60 * 1000);
+
     } catch (err) {
         console.error('Ошибка при обновлении всех лотов:', err.message);
-    } finally {
-        await browser.close();
-        console.log('🌐 Браузер закрыт');
     }
+} finally {
+    console.log('🟢 Цикл обработки завершен, браузер остаётся открытым');
 }
 
 main();
+
 
 
