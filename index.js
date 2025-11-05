@@ -2,62 +2,74 @@ import puppeteer from "puppeteer";
 import fs from "fs";
 
 const COOKIE_PATH = "./cookies.json";
-const HEADLESS = process.env.HEADLESS !== "false";
+const PROFILE_URL = "https://funpay.com/profile/lots/";
 const INTERVAL_MIN = parseInt(process.env.INTERVAL_MIN || "10", 10);
+const HEADLESS = process.env.HEADLESS !== "false";
 
 async function loadCookies(page) {
-  if (!fs.existsSync(COOKIE_PATH)) {
-    throw new Error("❌ Файл cookies.json не найден!");
+  try {
+    const cookies = JSON.parse(fs.readFileSync(COOKIE_PATH, "utf8"));
+    await page.setCookie(...cookies);
+    console.log("✅ Cookies загружены");
+  } catch (err) {
+    console.error("❌ Ошибка загрузки cookies:", err);
+    process.exit(1);
   }
-  const cookies = JSON.parse(fs.readFileSync(COOKIE_PATH, "utf8"));
-  await page.setCookie(...cookies);
-  console.log("✅ Cookies загружены.");
 }
 
 async function getAllLotLinks(page) {
-  console.log("🌐 Получаем все лоты с профиля...");
-  await page.goto("https://funpay.com/profile/lots/", { waitUntil: "networkidle2" });
+  console.log("🌐 Получаем все лоты с профилем...");
 
-  // Ждём, пока загрузятся ссылки на лоты
-  await page.waitForSelector('a[href^="/lots/"]', { timeout: 10000 });
+  await page.goto(PROFILE_URL, { waitUntil: "networkidle2" });
 
-  const links = await page.$$eval('a[href^="/lots/"]', els => {
-    // Берём уникальные ссылки на лоты
-    return Array.from(new Set(els.map(el => el.href)));
-  });
+  // Ждём контейнеры лотов
+  try {
+    await page.waitForSelector(".my-lot", { timeout: 15000 });
+  } catch {
+    throw new Error("❌ Не удалось загрузить лоты — проверьте куки или страницу профиля!");
+  }
 
-  console.log(`✅ Найдено ${links.length} лотов.`);
+  // Скроллим, чтобы подгрузить все лоты
+  let previousHeight;
+  do {
+    previousHeight = await page.evaluate("document.body.scrollHeight");
+    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)");
+    await page.waitForTimeout(1000);
+  } while ((await page.evaluate("document.body.scrollHeight")) > previousHeight);
+
+  // Получаем ссылки на все лоты
+  const links = await page.$$eval(".my-lot a[href^='/lots/']", els =>
+    Array.from(new Set(els.map(el => el.href)))
+  );
+
+  console.log(`✅ Найдено ${links.length} лотов`);
   return links;
 }
 
-async function raiseLot(page, url) {
+async function raiseOffer(page, lotUrl) {
   try {
-    await page.goto(url, { waitUntil: "networkidle2" });
+    await page.goto(lotUrl, { waitUntil: "networkidle2" });
 
-    // Подбираем кнопку "Поднять предложения"
-    const button = await page.$('button:has-text("Поднять предложения")');
-
+    // Ждём кнопку "Поднять предложение"
+    const button = await page.$('button:has-text("Поднять предложение")');
     if (button) {
       await button.click();
-      console.log(`✅ Предложения подняты для: ${url}`);
+      console.log(`✅ Предложение на ${lotUrl} поднято`);
     } else {
-      console.log(`⚠️ Кнопка 'Поднять предложения' не найдена: ${url}`);
+      console.log(`⚠️ Кнопка "Поднять предложение" не найдена на ${lotUrl}`);
     }
   } catch (err) {
-    console.error(`Ошибка при поднятии предложений для ${url}:`, err.message);
+    console.error(`Ошибка при обновлении лота ${lotUrl}:`, err);
   }
 }
 
 async function refreshAllLots(page) {
-  try {
-    const lotLinks = await getAllLotLinks(page);
-    for (const link of lotLinks) {
-      await raiseLot(page, link);
-      // Небольшая задержка между лотами, чтобы не банили
-      await new Promise(r => setTimeout(r, 1500));
-    }
-  } catch (err) {
-    console.error("Ошибка при обновлении всех лотов:", err.message);
+  const links = await getAllLotLinks(page);
+
+  for (const link of links) {
+    await raiseOffer(page, link);
+    // Ждём 1–2 сек, чтобы не перегружать сервер
+    await page.waitForTimeout(1500);
   }
 }
 
@@ -73,8 +85,14 @@ async function main() {
   // Первое обновление сразу
   await refreshAllLots(page);
 
-  // Дальше по интервалу
-  setInterval(() => refreshAllLots(page), INTERVAL_MIN * 60 * 1000);
+  // Цикл по интервалу
+  setInterval(async () => {
+    try {
+      await refreshAllLots(page);
+    } catch (err) {
+      console.error("Ошибка при обновлении всех лотов:", err);
+    }
+  }, INTERVAL_MIN * 60 * 1000);
 }
 
-main().catch(err => console.error("Ошибка при запуске бота:", err));
+main().catch(console.error);
