@@ -40,7 +40,7 @@ async function refreshLot(page, url, index) {
         await page.goto(url, { waitUntil: 'networkidle2' });
 
         // Ищем кнопку обновления
-        const updateBtn = await page.$('button:has-text("Обновить")');
+        const updateBtn = await page.$('button:has-text("Поднять предложения")');
         if (updateBtn) {
             await updateBtn.click();
             console.log(`✅ Лот ${index + 1} обновлён`);
@@ -74,3 +74,4 @@ async function main() {
 }
 
 main().catch(err => console.error(err));
+
