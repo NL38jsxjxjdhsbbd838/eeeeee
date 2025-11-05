@@ -1,77 +1,73 @@
-import fs from 'fs';
 import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import fs from 'fs';
 
-puppeteer.use(StealthPlugin());
-
-const COOKIES_PATH = './cookies.json';
-const PROFILE_URL = 'https://funpay.com/users/2694790/';
-
-// Задержка между действиями
-const delay = ms => new Promise(res => setTimeout(res, ms));
-
-async function loadCookies(page) {
-    const cookies = JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf-8'));
-    await page.setCookie(...cookies);
-    console.log('✅ Cookies загружены');
-}
+// Загружаем куки
+const cookies = JSON.parse(fs.readFileSync('./cookies.json', 'utf8'));
+const profileUrl = 'https://funpay.com/users/2694790/';
 
 async function getAllLotLinks(page) {
-    console.log(`🌐 Получаем все лоты с профиля ${PROFILE_URL}...`);
-    await page.goto(PROFILE_URL, { waitUntil: 'networkidle2' });
+    console.log(`🌐 Получаем все лоты с профиля ${profileUrl}...`);
+    await page.goto(profileUrl, { waitUntil: 'networkidle2' });
 
-    // Получаем все ссылки на лоты
-    const links = await page.evaluate(() => {
-        const anchors = Array.from(document.querySelectorAll('a[href^="/lots/"]'));
-        return anchors.map(a => a.href);
+    // Ждем появления лотов
+    await page.waitForSelector('a[href^="/lots/"]', { timeout: 5000 }).catch(() => {
+        console.log('❌ Лоты не найдены на странице');
+        return [];
     });
 
-    // Убираем дубли
-    const uniqueLinks = [...new Set(links)];
-    console.log(`✅ Найдено лотов: ${uniqueLinks.length}`);
-    uniqueLinks.forEach((link, i) => console.log(`${i + 1}: ${link}`));
-
-    return uniqueLinks;
+    const links = await page.$$eval('a[href^="/lots/"]', els => els.map(el => el.href));
+    return [...new Set(links)]; // убираем дубликаты
 }
 
-async function refreshLot(page, url, index) {
+async function raiseLot(page, lotUrl) {
     try {
-        console.log(`🔄 Обновляем лот ${index + 1}: ${url}`);
-        await page.goto(url, { waitUntil: 'networkidle2' });
+        await page.goto(lotUrl, { waitUntil: 'networkidle2' });
 
-        // Ищем кнопку обновления
-        const updateBtn = await page.$('button:has-text("Поднять предложения")');
-        if (updateBtn) {
-            await updateBtn.click();
-            console.log(`✅ Лот ${index + 1} обновлён`);
-        } else {
-            console.log(`⚠ Лот ${index + 1} не имеет кнопки обновления`);
+        // Ищем кнопку "Поднять предложение"
+        const button = await page.$('button:contains("Поднять предложение")');
+
+        if (!button) {
+            console.log(`⚠ Кнопка не найдена: ${lotUrl}`);
+            return false;
         }
 
-        await delay(1000); // задержка 1 сек
+        await button.click();
+        console.log(`✅ Предложение поднято: ${lotUrl}`);
+        return true;
+
     } catch (err) {
-        console.log(`❌ Ошибка обновления лота ${index + 1}: ${err.message}`);
+        console.log(`❌ Ошибка на лоте ${lotUrl}:`, err.message);
+        return false;
     }
 }
 
 async function main() {
     const browser = await puppeteer.launch({
-        headless: false, 
+        headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
+
     const page = await browser.newPage();
+    await page.setCookie(...cookies);
+    console.log('✅ Cookies загружены');
 
-    await loadCookies(page);
-
-    const lotLinks = await getAllLotLinks(page);
-
-    for (let i = 0; i < lotLinks.length; i++) {
-        await refreshLot(page, lotLinks[i], i);
+    const lots = await getAllLotLinks(page);
+    if (lots.length === 0) {
+        console.log('❌ Лоты не найдены — проверьте куки или страницу профиля!');
+        await browser.close();
+        return;
     }
 
-    console.log('🎉 Все лоты обработаны!');
+    console.log(`✅ Найдено лотов: ${lots.length}`);
+
+    for (let i = 0; i < lots.length; i++) {
+        console.log(`🔹 Обрабатываем лот ${i + 1}/${lots.length}`);
+        await raiseLot(page, lots[i]);
+        await page.waitForTimeout(1000); // пауза 1 сек между лотами
+    }
+
     await browser.close();
+    console.log('🌐 Все лоты обработаны, браузер закрыт');
 }
 
-main().catch(err => console.error(err));
-
+main();
