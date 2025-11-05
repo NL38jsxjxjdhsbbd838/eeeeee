@@ -1,4 +1,10 @@
 {
+  "type": "module",
+  "dependencies": {
+    "puppeteer": "^24.15.0"
+  }
+}
+{
   "name": "funpay-bot",
   "version": "1.0.0",
   "main": "index.js",
@@ -11,6 +17,7 @@
     "fs-extra": "^11.1.1"
   }
 }
+
 
 
 
