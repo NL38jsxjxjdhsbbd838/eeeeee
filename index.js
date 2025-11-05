@@ -1,96 +1,90 @@
-import puppeteer from "puppeteer";
-import fs from "fs";
+const puppeteer = require('puppeteer');
+const fs = require('fs');
 
-const COOKIE_PATH = "./cookies.json";
-const PROFILE_URL = "https://funpay.com/users/2694790/";
-const INTERVAL_MIN = parseInt(process.env.INTERVAL_MIN || "10", 10);
-const HEADLESS = process.env.HEADLESS !== "false";
+const COOKIE_PATH = './cookies.json';
+const INTERVAL_MIN = parseInt(process.env.INTERVAL_MIN || '10', 10);
 
-// Функция для загрузки cookies
-function loadCookies() {
-    if (!fs.existsSync(COOKIE_PATH)) {
-        console.error("⚠ Cookies не найдены!");
-        return [];
-    }
-    const cookies = JSON.parse(fs.readFileSync(COOKIE_PATH, "utf8"));
-    console.log("✅ Cookies загружены");
-    return cookies;
+let cookies = [];
+if (fs.existsSync(COOKIE_PATH)) {
+    cookies = JSON.parse(fs.readFileSync(COOKIE_PATH, 'utf8'));
+    console.log('✅ Cookies загружены');
+} else {
+    console.log('⚠ Cookies не найдены!');
 }
 
-// Получение всех ссылок на лоты с профиля
-async function getAllLotLinks(page) {
-    console.log(`🌐 Получаем все лоты с профиля ${PROFILE_URL}...`);
-    await page.goto(PROFILE_URL, { waitUntil: "networkidle2" });
+// Список лотов с профиля
+async function getAllLotLinks(profileUrl, page) {
+    console.log(`🌐 Получаем все лоты с профиля ${profileUrl}...`);
+    await page.goto(profileUrl, { waitUntil: 'networkidle2' });
 
-    const links = await page.$$eval("a[href*='/lots/']", anchors =>
+    const links = await page.$$eval('a[href*="/lots/"]', anchors =>
         anchors.map(a => a.href)
     );
+
     const uniqueLinks = [...new Set(links)];
 
-    if (!uniqueLinks.length) throw new Error("❌ Лоты не найдены!");
+    if (!uniqueLinks.length) {
+        throw new Error('❌ Лоты не найдены — проверьте куки или страницу профиля!');
+    }
+
     console.log(`✅ Найдено лотов: ${uniqueLinks.length}`);
+    uniqueLinks.forEach((link, i) => console.log(`${i + 1}: ${link}`));
     return uniqueLinks;
 }
 
-// Поднятие предложения на одном лоте
-async function raiseOffer(page, lotUrl) {
+// Поднять предложение на лоте
+async function raiseOffer(page, url) {
     try {
-        await page.goto(lotUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-        // XPath для кнопки с текстом "Поднять предложение"
-        const [button] = await page.$x("//button[contains(text(), 'Поднять предложение')]");
-        if (!button) {
-            console.log(`⚠️ Кнопка 'Поднять предложение' не найдена на ${lotUrl}`);
-            return;
-        }
-
-        // Нажимаем кнопку через evaluate
-        await page.evaluate(btn => btn.click(), button);
-
-        // Проверка модального окна подтверждения
-        try {
-            const [confirmBtn] = await page.$x("//button[contains(text(), 'Да') or contains(text(), 'Подтвердить')]");
-            if (confirmBtn) {
-                await page.evaluate(btn => btn.click(), confirmBtn);
+        // Находим кнопку "Поднять предложение"
+        const buttons = await page.$$('button');
+        let found = false;
+        for (const btn of buttons) {
+            const text = await page.evaluate(el => el.innerText, btn);
+            if (text.includes('Поднять предложение') || btn.getAttribute('data-action') === 'raise') {
+                await btn.click();
+                console.log(`✅ Предложение поднято на лоте ${url}`);
+                found = true;
+                break;
             }
-        } catch {
-            // Если модального окна нет — пропускаем
+        }
+        if (!found) {
+            console.log(`⚠️ Кнопка "Поднять предложение" не найдена на лоте ${url}`);
+        }
+    } catch (err) {
+        console.error(`❌ Ошибка на лоте ${url}:`, err.message || err);
+    }
+}
+
+// Основная функция
+async function main() {
+    const browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    const page = await browser.newPage();
+
+    if (cookies.length) {
+        await page.setCookie(...cookies);
+    }
+
+    try {
+        const profileUrl = 'https://funpay.com/users/2694790/';
+        const lotLinks = await getAllLotLinks(profileUrl, page);
+
+        // Проходим по каждому лоту и поднимаем предложения
+        for (const link of lotLinks) {
+            await raiseOffer(page, link);
         }
 
-        console.log(`✅ Предложение поднято на лоте ${lotUrl}`);
+        console.log('🎉 Все лоты обработаны!');
     } catch (err) {
-        console.error(`❌ Ошибка на лоте ${lotUrl}:`, err.message || err);
-    }
-}
-
-async function main() {
-    const cookies = loadCookies();
-    if (!cookies.length) return;
-
-    const browser = await puppeteer.launch({
-        headless: HEADLESS,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
-
-    const page = await browser.newPage();
-    await page.setCookie(...cookies);
-
-    let lotLinks;
-    try {
-        lotLinks = await getAllLotLinks(page);
-    } catch (err) {
-        console.error(err.message);
+        console.error('Ошибка при обновлении всех лотов:', err.message);
+    } finally {
         await browser.close();
-        return;
+        console.log('🌐 Браузер закрыт');
     }
-
-    for (const lotUrl of lotLinks) {
-        await raiseOffer(page, lotUrl);
-    }
-
-    console.log("🎉 Все лоты обработаны!");
-    await browser.close();
 }
 
-main().catch(err => console.error("Ошибка при запуске бота:", err));
-
+main();
