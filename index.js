@@ -47,8 +47,8 @@ async function raiseOffer(page, url) {
             }), btn);
 
             if (text.includes('Поднять предложения') || action === 'raise') {
-                // Ждём немного перед кликом
-                await page.waitForTimeout(500);
+                // Ждём 500 мс перед кликом
+                await new Promise(resolve => setTimeout(resolve, 500));
 
                 // Кликаем через evaluate, чтобы избежать ошибки 'left is already pressed'
                 await page.evaluate(el => el.click(), btn);
@@ -66,7 +66,6 @@ async function raiseOffer(page, url) {
         console.error(`❌ Ошибка на лоте ${url}:`, err.message || err);
     }
 }
-
 // Основная функция
 async function main() {
     const browser = await puppeteer.launch({
@@ -106,3 +105,4 @@ async function main() {
 }
 
 main();
+
