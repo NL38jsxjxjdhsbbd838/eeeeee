@@ -37,11 +37,9 @@ async function main() {
       console.log("🔄 Обновляем предложения...");
       await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 });
 
-      // Проверяем iframe, если контент подгружается в нем
-      const frame = page.frames().find(f => f.url().includes('/lots/696/trade')) || page;
-
-      // Ждём появления кнопки «Обновить» до 20 секунд
-      const refreshButton = await frame.waitForSelector('button:has-text("Обновить")', { timeout: 20000 });
+      // Ждём появления кнопки «Обновить» по точному селектору
+      const selector = '#content > div > div > div.col-md-10.col-sm-9 > div.page-content > div.row > div.col-lg-6.col-md-7 > div > div:nth-child(1) > button';
+      const refreshButton = await page.waitForSelector(selector, { timeout: 20000 });
 
       if (refreshButton) {
         await refreshButton.click();
@@ -62,4 +60,3 @@ async function main() {
 }
 
 main().catch(err => console.error("Ошибка при запуске бота:", err));
-
