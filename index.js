@@ -48,16 +48,16 @@ async function raiseOffer(page, url) {
                 action: el.getAttribute('data-action')
             }), btn);
 
-            if (text.includes('Поднять предложение') || action === 'raise') {
+            if (text.includes('Поднять предложения') || action === 'raise') {
                 await btn.click();
-                console.log(`✅ Предложение поднято на лоте ${url}`);
+                console.log(`✅ Предложения подняты на лоте ${url}`);
                 found = true;
                 break;
             }
         }
 
         if (!found) {
-            console.log(`⚠️ Кнопка "Поднять предложение" не найдена на лоте ${url}`);
+            console.log(`⚠️ Кнопка "Поднять предложения" не найдена на лоте ${url}`);
         }
     } catch (err) {
         console.error(`❌ Ошибка на лоте ${url}:`, err.message || err);
@@ -95,4 +95,5 @@ async function main() {
 }
 
 main();
+
 
