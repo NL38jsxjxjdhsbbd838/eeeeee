@@ -6,13 +6,15 @@ const PROFILE_URL = "https://funpay.com/users/2694790/";
 const INTERVAL_MIN = parseInt(process.env.INTERVAL_MIN || "10", 10);
 const HEADLESS = process.env.HEADLESS !== "false";
 
-// Загружаем куки
-let cookies = [];
-if (fs.existsSync(COOKIE_PATH)) {
-    cookies = JSON.parse(fs.readFileSync(COOKIE_PATH, "utf8"));
+// Функция для загрузки cookies
+function loadCookies() {
+    if (!fs.existsSync(COOKIE_PATH)) {
+        console.error("⚠ Cookies не найдены!");
+        return [];
+    }
+    const cookies = JSON.parse(fs.readFileSync(COOKIE_PATH, "utf8"));
     console.log("✅ Cookies загружены");
-} else {
-    console.log("⚠ Cookies не найдены!");
+    return cookies;
 }
 
 // Получение всех ссылок на лоты с профиля
@@ -20,72 +22,78 @@ async function getAllLotLinks(page) {
     console.log(`🌐 Получаем все лоты с профиля ${PROFILE_URL}...`);
     await page.goto(PROFILE_URL, { waitUntil: "networkidle2" });
 
-    const links = await page.$$eval('a[href*="/lots/"]', anchors => anchors.map(a => a.href));
+    const links = await page.$$eval("a[href*='/lots/']", anchors =>
+        anchors.map(a => a.href)
+    );
     const uniqueLinks = [...new Set(links)];
 
-    if (!uniqueLinks.length) {
-        console.log("❌ Лоты не найдены!");
-        return [];
-    }
-
+    if (!uniqueLinks.length) throw new Error("❌ Лоты не найдены!");
     console.log(`✅ Найдено лотов: ${uniqueLinks.length}`);
-    uniqueLinks.forEach((link, i) => console.log(`${i + 1}: ${link}`));
     return uniqueLinks;
 }
 
-// Поднять предложение на лоте
+// Поднятие предложения на одном лоте
 async function raiseOffer(page, lotUrl) {
     try {
-        await page.goto(lotUrl, { waitUntil: "networkidle2" });
+        await page.goto(lotUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-        // Селектор кнопки "Поднять предложение" (замени на точный селектор кнопки)
-        const buttonSelector = "button.btn.btn-primary"; // <-- нужно проверить на сайте
+        // Селектор кнопки "Поднять предложение"
+        const buttonSelector = "button:contains('Поднять предложение'), button[data-action='raise']";
 
-        // Ждём кнопку и кликаем
         const button = await page.$(buttonSelector);
+
         if (!button) {
-            console.log(`⚠ Кнопка не найдена на лоте: ${lotUrl}`);
+            console.log(`⚠️ Кнопка 'Поднять предложение' не найдена на ${lotUrl}`);
             return;
         }
 
-        await button.click();
-        console.log(`✅ Предложение поднято: ${lotUrl}`);
+        // Hover + click через evaluate для надёжности
+        await page.evaluate(btn => {
+            btn.scrollIntoView({ behavior: "smooth", block: "center" });
+            btn.click();
+        }, button);
+
+        // Проверка модального окна подтверждения
+        try {
+            await page.waitForSelector(".modal button.confirm", { timeout: 5000 });
+            await page.click(".modal button.confirm");
+        } catch {
+            // Если модального окна нет — пропускаем
+        }
+
+        console.log(`✅ Предложение поднято на лоте ${lotUrl}`);
     } catch (err) {
-        console.log(`❌ Ошибка на лоте ${lotUrl}: ${err.message}`);
+        console.error(`❌ Ошибка на лоте ${lotUrl}:`, err.message || err);
     }
 }
 
 async function main() {
+    const cookies = loadCookies();
+    if (!cookies.length) return;
+
     const browser = await puppeteer.launch({
         headless: HEADLESS,
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
     const page = await browser.newPage();
-    if (cookies.length) await page.setCookie(...cookies);
+    await page.setCookie(...cookies);
 
+    let lotLinks;
     try {
-        const lotLinks = await getAllLotLinks(page);
-        if (!lotLinks.length) return;
-
-        // Поднимаем предложения на всех лотах
-        for (const lot of lotLinks) {
-            await raiseOffer(page, lot);
-        }
-
-        console.log("🎉 Все лоты обработаны!");
+        lotLinks = await getAllLotLinks(page);
     } catch (err) {
-        console.error("Ошибка при обработке лотов:", err.message);
-    } finally {
+        console.error(err.message);
         await browser.close();
-        console.log("🌐 Браузер закрыт");
+        return;
     }
+
+    for (const lotUrl of lotLinks) {
+        await raiseOffer(page, lotUrl);
+    }
+
+    console.log("🎉 Все лоты обработаны!");
+    await browser.close();
 }
 
-// Запуск основного цикла с интервалом
-async function startLoop() {
-    await main();
-    setInterval(main, INTERVAL_MIN * 60 * 1000);
-}
-
-startLoop();
+main().catch(err => console.error("Ошибка при запуске бота:", err));
