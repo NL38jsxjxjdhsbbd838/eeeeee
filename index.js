@@ -27,7 +27,8 @@ async function main() {
       await page.reload({ waitUntil: "networkidle2" });
 
       // 👇 Вставь точный селектор кнопки «Обновить» (подсмотрим далее)
-      const refreshButton = await page.$(#content > div > div > div.col-md-10.col-sm-9 > div.page-content > div.row > div.col-lg-6.col-md-7 > div > div:nth-child(1) > button);
+      const refreshButton = await page.$('#content > div > div.col-md-10.col-sm-9 > div.page-content > div.row > div.col-lg-6.col-md-7 > div > div:nth-child(1) > button');
+
       if (refreshButton) {
         await refreshButton.click();
         console.log("✅ Предложения обновлены!");
@@ -47,3 +48,4 @@ async function main() {
 }
 
 main().catch(console.error);
+
