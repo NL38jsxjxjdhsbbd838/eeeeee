@@ -15,9 +15,14 @@ async function main() {
   const page = await browser.newPage();
 
   // Загружаем cookies
-  const cookies = JSON.parse(fs.readFileSync(COOKIE_PATH, "utf8"));
-  await page.setCookie(...cookies);
-  console.log("✅ Cookies загружены. Открываем страницу...");
+  try {
+    const cookies = JSON.parse(fs.readFileSync(COOKIE_PATH, "utf8"));
+    await page.setCookie(...cookies);
+    console.log("✅ Cookies загружены. Открываем страницу...");
+  } catch (err) {
+    console.error("⚠️ Не удалось загрузить cookies:", err);
+    return;
+  }
 
   await page.goto(URL, { waitUntil: "networkidle2" });
 
@@ -26,8 +31,11 @@ async function main() {
       console.log("🔄 Обновляем предложения...");
       await page.reload({ waitUntil: "networkidle2" });
 
-      // 👇 Вставь точный селектор кнопки «Обновить» (подсмотрим далее)
-      const refreshButton = await page.$('#content > div > div.col-md-10.col-sm-9 > div.page-content > div.row > div.col-lg-6.col-md-7 > div > div:nth-child(1) > button');
+      // Если страница использует iframe
+      const frame = page.frames().find(f => f.url().includes('/lots/696/trade')) || page;
+
+      // Ждём появления кнопки «Обновить» (до 10 секунд)
+      const refreshButton = await frame.waitForSelector('button:has-text("Обновить")', { timeout: 10000 });
 
       if (refreshButton) {
         await refreshButton.click();
@@ -36,7 +44,7 @@ async function main() {
         console.log("⚠️ Кнопка 'Обновить' не найдена!");
       }
     } catch (err) {
-      console.error("Ошибка при обновлении:", err);
+      console.error("Ошибка при обновлении:", err.message || err);
     }
   }
 
@@ -47,6 +55,4 @@ async function main() {
   setInterval(refreshOffers, INTERVAL_MIN * 60 * 1000);
 }
 
-main().catch(console.error);
-
-
+main().catch(err => console.error("Ошибка при запуске бота:", err));
