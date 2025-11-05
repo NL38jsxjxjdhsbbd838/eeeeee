@@ -3,7 +3,7 @@ import fs from "fs";
 
 const COOKIE_PATH = "./cookies.json";
 const URL = "https://funpay.com/lots/696/trade";
-const URL = "https://funpay.com/lots/1400/trade";
+const LOT_URL_2 = "https://funpay.com/lots/1400/trade";
 const INTERVAL_MIN = parseInt(process.env.INTERVAL_MIN || "10", 10);
 const HEADLESS = process.env.HEADLESS !== "false";
 
@@ -61,4 +61,5 @@ async function main() {
 }
 
 main().catch(err => console.error("Ошибка при запуске бота:", err));
+
 
