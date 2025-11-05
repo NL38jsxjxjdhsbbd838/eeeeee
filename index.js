@@ -2,8 +2,7 @@ import puppeteer from "puppeteer";
 import fs from "fs";
 
 const COOKIE_PATH = "./cookies.json";
-const URL = "https://funpay.com/lots/696/trade";
-const LOT_URL_2 = "https://funpay.com/lots/1400/trade";
+const PROFILE_URL = "https://funpay.com/users/2694790/"; // твой профиль
 const INTERVAL_MIN = parseInt(process.env.INTERVAL_MIN || "10", 10);
 const HEADLESS = process.env.HEADLESS !== "false";
 
@@ -16,50 +15,67 @@ async function main() {
   const page = await browser.newPage();
 
   // Загружаем cookies
-  try {
-    const cookies = JSON.parse(fs.readFileSync(COOKIE_PATH, "utf8"));
-    await page.setCookie(...cookies);
-    console.log("✅ Cookies загружены.");
-  } catch (err) {
-    console.error("⚠️ Не удалось загрузить cookies:", err);
-    return;
+  const cookies = JSON.parse(fs.readFileSync(COOKIE_PATH, "utf8"));
+  await page.setCookie(...cookies);
+  console.log("✅ Cookies загружены.");
+
+  async function getAllLotLinks() {
+    console.log("🌐 Получаем все лоты с профиля...");
+    await page.goto(PROFILE_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+
+    // Ждём загрузки списка лотов
+    await page.waitForSelector('a[href^="/lots/"]', { timeout: 10000 });
+
+    // Получаем все ссылки на лоты
+    const links = await page.evaluate(() => {
+      const anchors = Array.from(document.querySelectorAll('a[href^="/lots/"]'));
+      return anchors.map(a => a.href);
+    });
+
+    // Убираем дубли
+    const uniqueLinks = [...new Set(links)];
+    console.log(`🔹 Найдено лотов: ${uniqueLinks.length}`);
+    return uniqueLinks;
   }
 
-  // Переходим на страницу с увеличенным таймаутом
-  try {
-    await page.goto(URL, { waitUntil: "domcontentloaded", timeout: 60000 });
-    console.log("✅ Страница открыта.");
-  } catch (err) {
-    console.warn("⚠️ Таймаут при загрузке страницы, пробуем продолжить:", err.message);
-  }
-
-  async function refreshOffers() {
+  async function refreshLot(url) {
     try {
-      console.log("🔄 Обновляем предложения...");
-      await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 });
+      console.log(`🌐 Открываем лот: ${url}`);
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-      // Ждём появления кнопки «Обновить» по точному селектору
-      const selector = '#content > div > div > div.col-md-10.col-sm-9 > div.page-content > div.row > div.col-lg-6.col-md-7 > div > div:nth-child(1) > button';
-      const refreshButton = await page.waitForSelector(selector, { timeout: 20000 });
+      // Ждём кнопку "Поднять предложения"
+      await page.waitForSelector('button', { timeout: 10000 });
+      const raiseButton = await page.$('button:has-text("Поднять предложения")');
 
-      if (refreshButton) {
-        await refreshButton.click();
-        console.log("✅ Предложения обновлены!");
+      const timestamp = new Date().toLocaleString();
+
+      if (raiseButton) {
+        await raiseButton.click();
+        console.log(`✅ [${timestamp}] Предложения подняты!`);
       } else {
-        console.log("⚠️ Кнопка 'Обновить' не найдена!");
+        console.log(`⚠️ [${timestamp}] Кнопка 'Поднять предложения' не найдена!`);
       }
+
+      // Даем FunPay обработать клик
+      await page.waitForTimeout(2000);
     } catch (err) {
-      console.error("Ошибка при обновлении:", err.message || err);
+      console.error(`Ошибка при обновлении лота (${url}):`, err);
     }
   }
 
+  async function refreshAllLots() {
+    const lotLinks = await getAllLotLinks();
+    for (const url of lotLinks) {
+      await refreshLot(url);
+    }
+    console.log(`⏱ Следующее обновление через ${INTERVAL_MIN} минут.`);
+  }
+
   // Первое обновление сразу
-  await refreshOffers();
+  await refreshAllLots();
 
   // Цикл каждые INTERVAL_MIN минут
-  setInterval(refreshOffers, INTERVAL_MIN * 60 * 1000);
+  setInterval(refreshAllLots, INTERVAL_MIN * 60 * 1000);
 }
 
-main().catch(err => console.error("Ошибка при запуске бота:", err));
-
-
+main().catch(console.error);
