@@ -1,55 +1,58 @@
-import puppeteer from 'puppeteer';
-import fs from 'fs';
+import puppeteer from "puppeteer";
+import fs from "fs";
 
-// Загрузка куки
-async function loadCookies(page, path = './cookies.json') {
-  if (fs.existsSync(path)) {
-    const cookies = JSON.parse(fs.readFileSync(path));
-    await page.setCookie(...cookies);
-    console.log('✅ Cookies загружены');
-  } else {
-    console.log('⚠ Cookies файл не найден');
-  }
-}
+// Загружаем куки
+const cookies = JSON.parse(fs.readFileSync("./cookies.json", "utf-8"));
 
-// Получение всех лотов с профиля
-async function getAllLotLinks(page, profileUrl) {
+// Ссылка на профиль
+const profileUrl = "https://funpay.com/users/2694790/";
+
+async function getAllLotLinks(page) {
   console.log(`🌐 Получаем все лоты с профиля ${profileUrl}...`);
+  await page.goto(profileUrl, { waitUntil: "networkidle2" });
+
+  // Получаем все ссылки на лоты
+  const links = await page.$$eval('a[href^="/lots/"]', anchors => anchors.map(a => a.href));
+  
+  // Убираем дубли
+  return [...new Set(links)];
+}
+
+async function updateLot(page, url) {
   try {
-    await page.goto(profileUrl, { waitUntil: 'networkidle2' });
+    console.log(`🌐 Открываем лот: ${url}`);
+    await page.goto(url, { waitUntil: "networkidle2" });
 
-    // Ждем появления ссылок на лоты
-    await page.waitForSelector('a[href*="/lots/"]', { timeout: 10000 });
+    const updateSelector = 'button:has-text("Обновить")';
+    await page.waitForSelector(updateSelector, { timeout: 5000 });
+    await page.click(updateSelector);
 
-    // Получаем все ссылки
-    const lotLinks = await page.$$eval('a[href*="/lots/"]', els => els.map(el => el.href));
-
-    if (!lotLinks.length) {
-      throw new Error('❌ Лоты не найдены — проверьте куки или страницу профиля!');
-    }
-
-    console.log(`✅ Найдено лотов: ${lotLinks.length}`);
-    lotLinks.forEach((link, idx) => console.log(`${idx + 1}: ${link}`));
-
-    return lotLinks;
-  } catch (err) {
-    console.error('Ошибка при загрузке лотов:', err.message);
-    return [];
+    console.log(`✅ Лот обновлен: ${url}`);
+    await page.waitForTimeout(1000);
+  } catch (error) {
+    console.log(`❌ Не удалось обновить лот ${url}: ${error.message}`);
   }
 }
 
-// Пример основного запуска
-(async () => {
+async function main() {
   const browser = await puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
+
   const page = await browser.newPage();
+  await page.setCookie(...cookies);
+  console.log(`✅ Cookies загружены`);
 
-  await loadCookies(page);
+  const lotLinks = await getAllLotLinks(page);
+  console.log(`✅ Найдено лотов: ${lotLinks.length}`);
 
-  const profileUrl = 'https://funpay.com/users/2694790/';
-  const lotLinks = await getAllLotLinks(page, profileUrl);
+  for (const url of lotLinks) {
+    await updateLot(page, url);
+  }
 
+  console.log("🎉 Все лоты обработаны!");
   await browser.close();
-})();
+}
+
+main();
