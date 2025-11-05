@@ -37,12 +37,10 @@ async function raiseOffer(page, url) {
     try {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-        // Находим все кнопки
         const buttons = await page.$$('button');
         let found = false;
 
         for (const btn of buttons) {
-            // Получаем текст и data-action через evaluate
             const { text, action } = await page.evaluate(el => ({
                 text: el.innerText,
                 action: el.getAttribute('data-action')
@@ -95,14 +93,11 @@ async function main() {
             }
         }, INTERVAL_MIN * 60 * 1000);
 
+        console.log('🟢 Браузер остаётся открытым, бот работает в цикле');
+
     } catch (err) {
         console.error('Ошибка при обновлении всех лотов:', err.message);
     }
-} finally {
-    console.log('🟢 Цикл обработки завершен, браузер остаётся открытым');
 }
 
 main();
-
-
-
