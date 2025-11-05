@@ -37,18 +37,25 @@ async function raiseOffer(page, url) {
     try {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-        // Находим кнопку "Поднять предложение"
+        // Находим все кнопки
         const buttons = await page.$$('button');
         let found = false;
+
         for (const btn of buttons) {
-            const text = await page.evaluate(el => el.innerText, btn);
-            if (text.includes('Поднять предложение') || btn.getAttribute('data-action') === 'raise') {
+            // Получаем текст и data-action через evaluate
+            const { text, action } = await page.evaluate(el => ({
+                text: el.innerText,
+                action: el.getAttribute('data-action')
+            }), btn);
+
+            if (text.includes('Поднять предложение') || action === 'raise') {
                 await btn.click();
                 console.log(`✅ Предложение поднято на лоте ${url}`);
                 found = true;
                 break;
             }
         }
+
         if (!found) {
             console.log(`⚠️ Кнопка "Поднять предложение" не найдена на лоте ${url}`);
         }
@@ -88,3 +95,4 @@ async function main() {
 }
 
 main();
+
