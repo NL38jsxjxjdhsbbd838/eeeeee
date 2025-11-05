@@ -37,26 +37,22 @@ async function raiseOffer(page, lotUrl) {
     try {
         await page.goto(lotUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-        // Селектор кнопки "Поднять предложение"
-        const buttonSelector = "button:contains('Поднять предложение'), button[data-action='raise']";
-
-        const button = await page.$(buttonSelector);
-
+        // XPath для кнопки с текстом "Поднять предложение"
+        const [button] = await page.$x("//button[contains(text(), 'Поднять предложение')]");
         if (!button) {
             console.log(`⚠️ Кнопка 'Поднять предложение' не найдена на ${lotUrl}`);
             return;
         }
 
-        // Hover + click через evaluate для надёжности
-        await page.evaluate(btn => {
-            btn.scrollIntoView({ behavior: "smooth", block: "center" });
-            btn.click();
-        }, button);
+        // Нажимаем кнопку через evaluate
+        await page.evaluate(btn => btn.click(), button);
 
         // Проверка модального окна подтверждения
         try {
-            await page.waitForSelector(".modal button.confirm", { timeout: 5000 });
-            await page.click(".modal button.confirm");
+            const [confirmBtn] = await page.$x("//button[contains(text(), 'Да') or contains(text(), 'Подтвердить')]");
+            if (confirmBtn) {
+                await page.evaluate(btn => btn.click(), confirmBtn);
+            }
         } catch {
             // Если модального окна нет — пропускаем
         }
@@ -97,3 +93,4 @@ async function main() {
 }
 
 main().catch(err => console.error("Ошибка при запуске бота:", err));
+
