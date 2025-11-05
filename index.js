@@ -47,7 +47,12 @@ async function raiseOffer(page, url) {
             }), btn);
 
             if (text.includes('Поднять предложения') || action === 'raise') {
-                await btn.click();
+                // Ждём немного перед кликом
+                await page.waitForTimeout(500);
+
+                // Кликаем через evaluate, чтобы избежать ошибки 'left is already pressed'
+                await page.evaluate(el => el.click(), btn);
+
                 console.log(`✅ Предложения подняты на лоте ${url}`);
                 found = true;
                 break;
