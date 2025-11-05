@@ -2,7 +2,7 @@ import puppeteer from "puppeteer";
 import fs from "fs";
 
 const COOKIE_PATH = "./cookies.json";
-const PROFILE_URL = "https://funpay.com/users/me/lots";
+const PROFILE_URL = "https://funpay.com/users/2694790/";
 const INTERVAL_MIN = parseInt(process.env.INTERVAL_MIN || "10", 10);
 const HEADLESS = process.env.HEADLESS !== "false";
 
@@ -101,3 +101,4 @@ async function main() {
 }
 
 main().catch(console.error);
+
