@@ -38,8 +38,11 @@ async function raiseOffer(page, lotUrl) {
     try {
         await page.goto(lotUrl, { waitUntil: "networkidle2" });
 
-        // Ищем кнопку "Поднять предложение"
-        const [button] = await page.$x("//button[contains(text(), 'Поднять предложение')]");
+        // Селектор кнопки "Поднять предложение" (замени на точный селектор кнопки)
+        const buttonSelector = "button.btn.btn-primary"; // <-- нужно проверить на сайте
+
+        // Ждём кнопку и кликаем
+        const button = await page.$(buttonSelector);
         if (!button) {
             console.log(`⚠ Кнопка не найдена на лоте: ${lotUrl}`);
             return;
