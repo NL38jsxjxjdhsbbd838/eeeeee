@@ -1,113 +1,55 @@
-// index.js
 import puppeteer from 'puppeteer';
 import fs from 'fs';
 
-// --- Настройки ---
-const PROFILE_URL = 'https://funpay.com/users/2694790/';
-const COOKIES_FILE = './cookies.json';
-const REFRESH_INTERVAL_MS = 10000; // интервал между обновлениями
-
-// --- Логирование ---
-function log(msg) {
-    const time = new Date().toISOString();
-    console.log(`[${time}] ${msg}`);
-}
-
-// --- Загрузка cookies ---
-async function loadCookies(page) {
-    if (!fs.existsSync(COOKIES_FILE)) {
-        throw new Error('Файл cookies не найден!');
-    }
-    const cookies = JSON.parse(fs.readFileSync(COOKIES_FILE, 'utf8'));
+// Загрузка куки
+async function loadCookies(page, path = './cookies.json') {
+  if (fs.existsSync(path)) {
+    const cookies = JSON.parse(fs.readFileSync(path));
     await page.setCookie(...cookies);
-    log('✅ Cookies загружены');
+    console.log('✅ Cookies загружены');
+  } else {
+    console.log('⚠ Cookies файл не найден');
+  }
 }
 
-// --- Получаем все лоты с профиля ---
-async function getAllLotLinks(page) {
-    log('🌐 Получаем все лоты с профиля...');
-    await page.goto(PROFILE_URL, { waitUntil: 'networkidle2' });
+// Получение всех лотов с профиля
+async function getAllLotLinks(page, profileUrl) {
+  console.log(`🌐 Получаем все лоты с профиля ${profileUrl}...`);
+  try {
+    await page.goto(profileUrl, { waitUntil: 'networkidle2' });
 
-    // Скроллим страницу, чтобы подгрузились все лоты
-    await autoScroll(page);
+    // Ждем появления ссылок на лоты
+    await page.waitForSelector('a[href*="/lots/"]', { timeout: 10000 });
 
-    const links = await page.$$eval('a[href^="/lots/"]', els =>
-        els.map(el => el.href)
-    );
+    // Получаем все ссылки
+    const lotLinks = await page.$$eval('a[href*="/lots/"]', els => els.map(el => el.href));
 
-    if (!links.length) throw new Error('❌ Лоты не найдены — проверьте куки или страницу профиля!');
-    log(`✅ Найдено ${links.length} лотов`);
-    return links;
-}
-
-// --- Автоскролл страницы ---
-async function autoScroll(page) {
-    await page.evaluate(async () => {
-        await new Promise(resolve => {
-            let totalHeight = 0;
-            const distance = 200;
-            const timer = setInterval(() => {
-                const scrollHeight = document.body.scrollHeight;
-                window.scrollBy(0, distance);
-                totalHeight += distance;
-                if (totalHeight >= scrollHeight) clearInterval(timer, resolve());
-            }, 100);
-        });
-    });
-}
-
-// --- Поднимаем один лот ---
-async function refreshLot(page, url) {
-    await page.goto(url, { waitUntil: 'networkidle2' });
-
-    try {
-        const button = await page.$('button:has-text("Поднять предложение")');
-        if (!button) {
-            log(`⚠ Кнопка "Поднять предложение" не найдена на ${url}`);
-            return false;
-        }
-        await button.click();
-        log(`✅ Лот обновлен: ${url}`);
-        return true;
-    } catch (e) {
-        log(`❌ Ошибка при обновлении лота ${url}: ${e.message}`);
-        return false;
+    if (!lotLinks.length) {
+      throw new Error('❌ Лоты не найдены — проверьте куки или страницу профиля!');
     }
+
+    console.log(`✅ Найдено лотов: ${lotLinks.length}`);
+    lotLinks.forEach((link, idx) => console.log(`${idx + 1}: ${link}`));
+
+    return lotLinks;
+  } catch (err) {
+    console.error('Ошибка при загрузке лотов:', err.message);
+    return [];
+  }
 }
 
-// --- Обновляем все лоты ---
-async function refreshAllLots(page) {
-    try {
-        const links = await getAllLotLinks(page);
-        for (const link of links) {
-            await refreshLot(page, link);
-            await page.waitForTimeout(1000); // пауза между лотами
-        }
-        log('✅ Все лоты обновлены');
-    } catch (e) {
-        log(`Ошибка при обновлении всех лотов: ${e.message}`);
-    }
-}
+// Пример основного запуска
+(async () => {
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  });
+  const page = await browser.newPage();
 
-// --- Основная функция ---
-async function main() {
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+  await loadCookies(page);
 
-    const page = await browser.newPage();
+  const profileUrl = 'https://funpay.com/users/2694790/';
+  const lotLinks = await getAllLotLinks(page, profileUrl);
 
-    try {
-        await loadCookies(page);
-        await refreshAllLots(page);
-    } catch (e) {
-        log(`❌ ${e.message}`);
-    } finally {
-        await browser.close();
-        log('🌐 Браузер закрыт');
-    }
-}
-
-// Запуск
-main();
+  await browser.close();
+})();
