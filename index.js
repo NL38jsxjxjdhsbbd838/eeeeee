@@ -18,24 +18,30 @@ async function main() {
   try {
     const cookies = JSON.parse(fs.readFileSync(COOKIE_PATH, "utf8"));
     await page.setCookie(...cookies);
-    console.log("✅ Cookies загружены. Открываем страницу...");
+    console.log("✅ Cookies загружены.");
   } catch (err) {
     console.error("⚠️ Не удалось загрузить cookies:", err);
     return;
   }
 
-  await page.goto(URL, { waitUntil: "networkidle2" });
+  // Переходим на страницу с увеличенным таймаутом
+  try {
+    await page.goto(URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+    console.log("✅ Страница открыта.");
+  } catch (err) {
+    console.warn("⚠️ Таймаут при загрузке страницы, пробуем продолжить:", err.message);
+  }
 
   async function refreshOffers() {
     try {
       console.log("🔄 Обновляем предложения...");
-      await page.reload({ waitUntil: "networkidle2" });
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 });
 
-      // Если страница использует iframe
+      // Проверяем iframe, если контент подгружается в нем
       const frame = page.frames().find(f => f.url().includes('/lots/696/trade')) || page;
 
-      // Ждём появления кнопки «Обновить» (до 10 секунд)
-      const refreshButton = await frame.waitForSelector('button:has-text("Обновить")', { timeout: 10000 });
+      // Ждём появления кнопки «Обновить» до 20 секунд
+      const refreshButton = await frame.waitForSelector('button:has-text("Обновить")', { timeout: 20000 });
 
       if (refreshButton) {
         await refreshButton.click();
@@ -56,3 +62,4 @@ async function main() {
 }
 
 main().catch(err => console.error("Ошибка при запуске бота:", err));
+
